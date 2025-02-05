@@ -5,9 +5,39 @@ from sprite import *
 from settings import *
 
 
+class Image:  # Capitalize class names for better style
+    def __init__(self, path, n):
+        self.path = path
+        self.image = pygame.image.load(path)
+        self.n = n
+
+    def get_dim(self):
+        im_obj = self.image.get_rect()
+        width_unit = im_obj.width // self.n  # Integer division is important
+        height_unit = im_obj.height // self.n
+        return height_unit,width_unit
+    
+    def split_image(self):
+        (height_unit, width_unit) = self.get_dim()
+        pieces = []
+        for i in range(self.n):
+            pieces.append([])
+            for j in range(self.n):
+                crop_x = width_unit * j
+                crop_y = height_unit * i
+                rect = pygame.Rect(crop_x, crop_y, width_unit, height_unit)
+                cropped_surface = self.image.subsurface(rect)
+                pieces[i].append(cropped_surface)
+        return pieces
+    
+image_path = '../raw2.jpeg'
+
 class Game:
-    def __init__(self):
+    def __init__(self,path):
         pygame.init()
+        self.base_image = Image(path,GAME_SIZE)
+        self.pieces = self.base_image.split_image()
+        self.dim = self.base_image.get_dim()
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         pygame.display.set_caption(title)
         self.clock = pygame.time.Clock()
@@ -31,6 +61,7 @@ class Game:
     def create_game(self):
         grid = [[x + y * GAME_SIZE for x in range(1, GAME_SIZE + 1)] for y in range(GAME_SIZE)]
         grid[-1][-1] = 0
+        self.pieces = self.base_image.split_image()
         return grid
 
     def shuffle(self):
@@ -49,7 +80,7 @@ class Game:
                     break
             if len(possible_moves) > 0:
                 break
-
+        
         if self.previous_choice == "right":
             possible_moves.remove("left") if "left" in possible_moves else possible_moves
         elif self.previous_choice == "left":
@@ -61,18 +92,19 @@ class Game:
 
         choice = random.choice(possible_moves)
         self.previous_choice = choice
-        if choice == "right":
-            self.tiles_grid[row][col], self.tiles_grid[row][col + 1] = self.tiles_grid[row][col + 1], \
-                                                                       self.tiles_grid[row][col]
-        elif choice == "left":
-            self.tiles_grid[row][col], self.tiles_grid[row][col - 1] = self.tiles_grid[row][col - 1], \
-                                                                       self.tiles_grid[row][col]
-        elif choice == "up":
-            self.tiles_grid[row][col], self.tiles_grid[row - 1][col] = self.tiles_grid[row - 1][col], \
-                                                                       self.tiles_grid[row][col]
-        elif choice == "down":
-            self.tiles_grid[row][col], self.tiles_grid[row + 1][col] = self.tiles_grid[row + 1][col], \
-                                                                       self.tiles_grid[row][col]
+        # print(choice,col)
+        if choice == "right" and col<GAME_SIZE-1:
+            self.tiles_grid[row][col], self.tiles_grid[row][col + 1] = self.tiles_grid[row][col + 1], self.tiles_grid[row][col]
+            self.pieces[row][col], self.pieces[row][col + 1] = self.pieces[row][col + 1], self.pieces[row][col]
+        elif choice == "left" and col>0:
+            self.tiles_grid[row][col], self.tiles_grid[row][col - 1] = self.tiles_grid[row][col - 1], self.tiles_grid[row][col]
+            self.pieces[row][col], self.pieces[row][col - 1] = self.pieces[row][col - 1], self.pieces[row][col]
+        elif choice == "up" and row>0:
+            self.tiles_grid[row][col], self.tiles_grid[row - 1][col] = self.tiles_grid[row - 1][col], self.tiles_grid[row][col]
+            self.pieces[row][col], self.pieces[row - 1][col] = self.pieces[row - 1][col], self.pieces[row][col]
+        elif choice == "down" and row<GAME_SIZE-1:
+            self.tiles_grid[row][col], self.tiles_grid[row + 1][col] = self.tiles_grid[row + 1][col], self.tiles_grid[row][col]
+            self.pieces[row][col], self.pieces[row + 1][col] = self.pieces[row + 1][col], self.pieces[row][col]
 
     def draw_tiles(self):
         self.tiles = []
@@ -80,9 +112,9 @@ class Game:
             self.tiles.append([])
             for col, tile in enumerate(x):
                 if tile != 0:
-                    self.tiles[row].append(Tile(self, col, row, str(tile)))
+                    self.tiles[row].append(Tile(self, col, row, str(tile),self.dim,self.pieces[row][col]))
                 else:
-                    self.tiles[row].append(Tile(self, col, row, "empty"))
+                    self.tiles[row].append(Tile(self, col, row, "empty",self.dim))
 
     def new(self):
         self.all_sprites = pygame.sprite.Group()
@@ -131,10 +163,10 @@ class Game:
         self.all_sprites.update()
 
     def draw_grid(self):
-        for row in range(-1, GAME_SIZE * TILESIZE, TILESIZE):
-            pygame.draw.line(self.screen, LIGHTGREY, (row, 0), (row, GAME_SIZE * TILESIZE))
-        for col in range(-1, GAME_SIZE * TILESIZE, TILESIZE):
-            pygame.draw.line(self.screen, LIGHTGREY, (0, col), (GAME_SIZE * TILESIZE, col))
+        for row in range(-1, GAME_SIZE * self.dim[1], self.dim[1]):
+            pygame.draw.line(self.screen, LIGHTGREY, (row, 0), (row, GAME_SIZE * self.dim[0]))
+        for col in range(-1, GAME_SIZE * self.dim[0], self.dim[0]):
+            pygame.draw.line(self.screen, LIGHTGREY, (0, col), (GAME_SIZE * self.dim[0], col))
 
     def draw(self):
         self.screen.fill(BGCOLOUR)
@@ -143,7 +175,7 @@ class Game:
         for button in self.buttons_list:
             button.draw(self.screen)
         UIElement(550, 35, "%.3f" % self.elapsed_time).draw(self.screen)
-        UIElement(430, 300, "High Score - %.3f" % (self.high_score if self.high_score > 0 else 0)).draw(self.screen)
+        # UIElement(430, 300, "High Score - %.3f" % (self.high_score if self.high_score > 0 else 0)).draw(self.screen)
         pygame.display.flip()
 
     def events(self):
@@ -159,16 +191,16 @@ class Game:
                         if tile.click(mouse_x, mouse_y):
                             if tile.right() and self.tiles_grid[row][col + 1] == 0:
                                 self.tiles_grid[row][col], self.tiles_grid[row][col + 1] = self.tiles_grid[row][col + 1], self.tiles_grid[row][col]
-
+                                self.pieces[row][col], self.pieces[row][col + 1] = self.pieces[row][col + 1], self.pieces[row][col]
                             if tile.left() and self.tiles_grid[row][col - 1] == 0:
                                 self.tiles_grid[row][col], self.tiles_grid[row][col - 1] = self.tiles_grid[row][col - 1], self.tiles_grid[row][col]
-
+                                self.pieces[row][col], self.pieces[row][col - 1] = self.pieces[row][col - 1], self.pieces[row][col]
                             if tile.up() and self.tiles_grid[row - 1][col] == 0:
                                 self.tiles_grid[row][col], self.tiles_grid[row - 1][col] = self.tiles_grid[row - 1][col], self.tiles_grid[row][col]
-
+                                self.pieces[row][col], self.pieces[row - 1][col] = self.pieces[row - 1][col], self.pieces[row][col]
                             if tile.down() and self.tiles_grid[row + 1][col] == 0:
                                 self.tiles_grid[row][col], self.tiles_grid[row + 1][col] = self.tiles_grid[row + 1][col], self.tiles_grid[row][col]
-
+                                self.pieces[row][col], self.pieces[row + 1][col] = self.pieces[row + 1][col], self.pieces[row][col]
                             self.draw_tiles()
 
                 for button in self.buttons_list:
@@ -180,7 +212,7 @@ class Game:
                             self.new()
 
 
-game = Game()
+game = Game(image_path)
 while True:
     game.new()
     game.run()
